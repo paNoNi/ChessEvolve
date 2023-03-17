@@ -225,7 +225,7 @@ with col_left:
     num_population = st.number_input('Размер популяции', min_value=1, step=1, value=st.session_state['num_population'])
     top_individuals = st.number_input('Количество особей для отбора', min_value=1, max_value=num_population, step=1,
                                       value=st.session_state['top_individuals'])
-    fig_count = st.slider('Количество фигур', min_value=1, max_value=9, step=1, value=st.session_state['fig_count'])
+    fig_count = st.slider('Количество фигур', min_value=1, max_value=15, step=1, value=st.session_state['fig_count'])
     mut_prob = st.slider('Вероятность мутации', min_value=.0, max_value=1., value=.1, step=.001)
 
     container = st.empty()
