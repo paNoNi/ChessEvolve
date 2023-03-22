@@ -13,7 +13,7 @@ def generate_figures(fig_count: int) -> List[List[int]]:
     positions = np.zeros(shape=(fig_count, 2))
     cur_index = 0
     while cur_index != fig_count:
-        new_pos = [random.randint(0, 8), random.randint(0, 8)]
+        new_pos = [random.randint(0, st.session_state['fig_count'] - 1), random.randint(0, st.session_state['fig_count'] - 1)]
         if (positions == new_pos).all(axis=1).any():
             continue
         positions[cur_index] = new_pos
@@ -36,13 +36,13 @@ def fitness_func(individual: List[List[int]]) -> float:
 
 
 def get_weighted_table(individual: List[List[int]]):
-    instance = np.zeros(shape=(9, 9))
-    mask = np.zeros(shape=(9, 9), dtype=bool)
+    instance = np.zeros(shape=(st.session_state['fig_count'], st.session_state['fig_count']))
+    mask = np.zeros(shape=(st.session_state['fig_count'], st.session_state['fig_count']), dtype=bool)
     for pos in individual:
         instance[pos[0]] += 1
         instance[:, pos[1]] += 1
-        instance += np.eye(N=9, k=int(pos[1]) - int(pos[0]))
-        instance += np.fliplr(np.eye(N=9, k=8 - pos[1] - pos[0]))
+        instance += np.eye(N=st.session_state['fig_count'], k=int(pos[1]) - int(pos[0]))
+        instance += np.fliplr(np.eye(N=st.session_state['fig_count'], k=st.session_state['fig_count'] - 1 - pos[1] - pos[0]))
         instance[pos[0], pos[1]] -= 4
         mask[pos[0], pos[1]] = True
 
@@ -59,19 +59,20 @@ def selection(population: List[List[List[int]]], top_count: int) -> List[List[Li
     return list(np.array(population)[top_n_scores_indexes][:top_count])
 
 
-def budding(individual: List[List[int]]):
-    instance, mask = get_weighted_table(individual)
-    inst_copy = instance.copy()
-    inst_copy[~mask] = 100
-    fig_rows, fig_cols = np.where(inst_copy == np.max(inst_copy[mask]))
-    rand_fig = random.randint(0, len(fig_rows) - 1)
+def budding(individual: List[List[int]], n=5):
+    for _ in range(n):
+        instance, mask = get_weighted_table(individual)
+        inst_copy = instance.copy()
+        inst_copy[~mask] = np.inf
+        fig_rows, fig_cols = np.where(inst_copy == np.max(inst_copy[mask]))
+        rand_fig = random.randint(0, len(fig_rows) - 1)
 
-    nofig_rows, nofig_cols = np.where(inst_copy == np.min(inst_copy[~mask]))
-    norand_fig = random.randint(0, len(nofig_rows) - 1)
+        nofig_rows, nofig_cols = np.where(inst_copy == np.min(inst_copy[~mask]))
+        norand_fig = random.randint(0, len(nofig_rows) - 1)
 
-    individual = np.array(individual, dtype=int)
-    fig_mask = np.where((individual == (fig_rows[rand_fig], fig_cols[rand_fig])).all(axis=1))[0]
-    individual[fig_mask] = np.array([nofig_rows[norand_fig], nofig_cols[norand_fig]])
+        individual = np.array(individual, dtype=int)
+        fig_mask = np.where((individual == (fig_rows[rand_fig], fig_cols[rand_fig])).all(axis=1))[0]
+        individual[fig_mask] = np.array([nofig_rows[norand_fig], nofig_cols[norand_fig]])
 
     return list(individual)
 
@@ -91,9 +92,11 @@ def mutate(individual: List[List[int]]):
 def step_evolve(population: List[List[List[int]]]):
     best_individuals = selection(population, st.session_state['top_individuals'])
     new_individuals = list()
+    budding_count = max(round(st.session_state['bud_decay'] * st.session_state['bud_count']), 1)
+    st.session_state['bud_decay'] *= st.session_state['bud_decay']
     for individual in best_individuals:
         for _ in range(st.session_state['num_population'] // st.session_state['top_individuals'] - 1):
-            new_individ = budding(individual.copy())
+            new_individ = budding(individual.copy(), n=budding_count)
             if random.random() > st.session_state['mut_prob']:
                 new_individ = mutate(new_individ)
             new_individuals.append(new_individ)
@@ -106,7 +109,7 @@ def step_evolve(population: List[List[List[int]]]):
 # GUI
 
 def draw_board(width: int = 20) -> np.ndarray:
-    nrows, ncols = 9, 9
+    nrows, ncols = st.session_state['fig_count'], st.session_state['fig_count']
     image = np.ones(nrows * ncols * 3 * width * width) * 255
 
     # Reshape things into a 9x9 grid.
@@ -168,9 +171,6 @@ def draw_chest(fig_positions: List[List[int]]):
 
 def loop_table(col_right):
     last_fig = None
-
-    if st.session_state['status'] == 0:
-        return
     population = generate_population(st.session_state['num_population'], st.session_state['fig_count'])
     with col_right:
         st_plt = None
@@ -207,6 +207,8 @@ if 'num_iters' not in st.session_state.keys():
     st.session_state['fig_count'] = 5
     st.session_state['top_individuals'] = 30
     st.session_state['mut_prob'] = .1
+    st.session_state['bud_count'] = 1
+    st.session_state['bud_decay'] = .99
 
 status = {
     0: 'run',
@@ -225,8 +227,9 @@ with col_left:
     num_population = st.number_input('Размер популяции', min_value=1, step=1, value=st.session_state['num_population'])
     top_individuals = st.number_input('Количество особей для отбора', min_value=1, max_value=num_population, step=1,
                                       value=st.session_state['top_individuals'])
-    fig_count = st.slider('Количество фигур', min_value=1, max_value=15, step=1, value=st.session_state['fig_count'])
+    fig_count = st.slider('Количество фигур', min_value=4, max_value=200, step=1, value=st.session_state['fig_count'])
     mut_prob = st.slider('Вероятность мутации', min_value=.0, max_value=1., value=.1, step=.001)
+    bud_count = st.slider('Количество перестановок', min_value=1, max_value=st.session_state['fig_count'], value=st.session_state['bud_count'], step=1)
 
     container = st.empty()
     is_clicked = container.button(status[st.session_state['status']])
@@ -241,6 +244,7 @@ st.session_state['fig_count'] = fig_count
 st.session_state['top_individuals'] = top_individuals
 st.session_state['mut_prob'] = mut_prob
 
-loop_table(col_right)
+if st.session_state['status'] != 0:
+    loop_table(col_right)
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
