@@ -215,7 +215,7 @@ status = {
     1: 'stop'
 }
 
-st.title('Chest optimization')
+st.title('Chess optimization')
 
 col_left, col_right = st.columns(2)
 
